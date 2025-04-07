@@ -84,6 +84,31 @@
             background-color: #3cb371; /* MediumSeaGreen */
             color: white;
         }
+
+        #score-popup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 30px 50px;
+            background-color: rgba(255, 105, 180, 0.9); /* HotPink with transparency */
+            color: #fff352; /* Bright Yellow */
+            font-size: 2.5em;
+            font-weight: bold;
+            text-align: center;
+            border: 5px groove #ff1493; /* DeepPink */
+            border-radius: 20px;
+            z-index: 1000;
+            display: none; /* Initially hidden */
+            text-shadow: 3px 3px 5px rgba(0,0,0,0.5);
+            box-shadow: 0 0 20px 10px rgba(255, 20, 147, 0.7); /* Glowing DeepPink */
+            animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+            from { transform: translate(-50%, -50%) scale(1); }
+            to { transform: translate(-50%, -50%) scale(1.05); }
+        }
     </style>
 </head>
 <body>
@@ -108,6 +133,8 @@
         <button onclick="resetGame()">Play Again?</button>
     </div>
 
+    <div id="score-popup"></div>
+
     <script>
         const canvas = document.getElementById('game-board');
         const context = canvas.getContext('2d');
@@ -115,6 +142,7 @@
         const nextContext = nextCanvas.getContext('2d');
         const scoreElement = document.getElementById('score');
         const gameOverElement = document.getElementById('game-over');
+        const scorePopupElement = document.getElementById('score-popup');
 
         const COLS = 10;
         const ROWS = 20;
@@ -155,10 +183,25 @@
         let board = createBoard();
         let currentPiece;
         let nextPiece;
-        let score = 0;
+        let score = 40;
         let gameOver = false;
         let dropStart = Date.now();
         let dropInterval = 1000; // ms
+        let lastScoreThreshold = 0;
+        let popupTimeout;
+
+        const crazyMessages = [
+            "WOAH! NICE! 😎",
+            "UNICORN POWER! 🦄",
+            "PIZZA TIME! 🍕",
+            "OUT OF THIS WORLD! 🪐",
+            "ALIEN INVASION! 👽",
+            "LIGHTNING FAST! ⚡️",
+            "POO-PER SCORE! 💩",
+            "ROCKET RIDE! 🚀",
+            "CRAZY SKILLS! 🤪",
+            "KEEP IT UP! 🔥"
+        ];
 
         function createBoard() {
             return Array.from({ length: ROWS }, () => Array(COLS).fill(null)); // Use null for empty, emoji for filled
@@ -354,13 +397,23 @@
             // Update score
             if (linesCleared > 0) {
                  // Simple scoring: 10 points per line, bonus for multiple lines
-                score += linesCleared * 10 * linesCleared; // e.g., 10, 40, 90, 160
+                const scoreGain = linesCleared * 10 * linesCleared; // e.g., 10, 40, 90, 160
+                score += scoreGain;
                 scoreElement.textContent = score;
 
                  // Increase speed slightly
                  if (dropInterval > 200) { // Set a max speed
-                     dropInterval -= linesCleared * 10;
+                     dropInterval -= linesCleared * 10; // Speed increase based on lines cleared
                  }
+
+                // --- Score Popup Logic --- //
+                const currentScoreThreshold = Math.floor(score / 100) * 100;
+                if (currentScoreThreshold > lastScoreThreshold) {
+                    const randomMsg = crazyMessages[Math.floor(Math.random() * crazyMessages.length)];
+                    showCrazyPopup(randomMsg);
+                    lastScoreThreshold = currentScoreThreshold;
+                }
+                 // ------------------------- //
             }
         }
 
@@ -383,9 +436,22 @@
              nextPiece = getRandomPiece(); // Get the first 'next' piece
              currentPiece = getRandomPiece(); // Get the first playing piece
              drawNextPiece();
+             lastScoreThreshold = 0;
+             clearTimeout(popupTimeout);
+             scorePopupElement.style.display = 'none';
              gameLoop(); // Start the loop again
         }
 
+        // --- Added Popup Function --- //
+        function showCrazyPopup(message) {
+            clearTimeout(popupTimeout); // Clear previous timeout if any
+            scorePopupElement.textContent = message;
+            scorePopupElement.style.display = 'block';
+            popupTimeout = setTimeout(() => {
+                scorePopupElement.style.display = 'none';
+            }, 2500); // Show for 2.5 seconds
+        }
+        // -------------------------- //
 
         function gameLoop() {
             if (gameOver) {

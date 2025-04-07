@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crazytris</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f8ff; /* Alice Blue */
+        }
+        h1 {
+            color: #ff4500; /* OrangeRed */
+            text-shadow: 2px 2px 4px #aaa;
+        }
+        #game-container {
+            display: flex;
+            align-items: flex-start;
+            border: 5px dashed #ff69b4; /* HotPink */
+            padding: 15px;
+            background-color: #fffacd; /* LemonChiffon */
+            border-radius: 15px;
+            box-shadow: 5px 5px 15px rgba(0,0,0,0.2);
+        }
+        canvas {
+            border: 3px solid #8a2be2; /* BlueViolet */
+            background-color: #e0ffff; /* LightCyan */
+        }
+        #game-info {
+            margin-left: 20px;
+            padding: 10px;
+            background-color: #fafad2; /* LightGoldenrodYellow */
+            border: 2px dotted #00ced1; /* DarkTurquoise */
+            border-radius: 10px;
+            min-width: 120px;
+            text-align: center;
+        }
+        #game-info h2 {
+            margin: 5px 0;
+            color: #2e8b57; /* SeaGreen */
+            font-size: 1.2em;
+        }
+        #score {
+            font-weight: bold;
+            color: #dc143c; /* Crimson */
+            font-size: 1.3em;
+        }
+        #next-piece-canvas {
+             margin-top: 10px;
+             background-color: #fff0f5; /* LavenderBlush */
+             border: 2px solid #ff1493; /* DeepPink */
+        }
+        #controls, #game-over {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f5f5dc; /* Beige */
+            border: 2px solid #bdb76b; /* DarkKhaki */
+            border-radius: 10px;
+            text-align: center;
+        }
+         #game-over {
+            display: none; /* Initially hidden */
+            color: red;
+            font-size: 1.5em;
+            font-weight: bold;
+         }
+        button {
+            padding: 10px 15px;
+            font-size: 1em;
+            margin-top: 10px;
+            cursor: pointer;
+            background-color: #98fb98; /* PaleGreen */
+            border: 1px solid #3cb371; /* MediumSeaGreen */
+            border-radius: 5px;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #3cb371; /* MediumSeaGreen */
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>🤪 Crazytris 🤪</h1>
+
+    <div id="game-container">
+        <canvas id="game-board" width="200" height="400"></canvas>
+        <div id="game-info">
+            <h2>Score</h2>
+            <div id="score">0</div>
+            <h2>Next</h2>
+            <canvas id="next-piece-canvas" width="80" height="80"></canvas>
+        </div>
+    </div>
+
+    <div id="controls">
+        Use Arrow Keys: ← Left, → Right, ↓ Down, ↑ Rotate
+    </div>
+
+    <div id="game-over">
+        GAME OVER! 🤯
+        <button onclick="resetGame()">Play Again?</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game-board');
+        const context = canvas.getContext('2d');
+        const nextCanvas = document.getElementById('next-piece-canvas');
+        const nextContext = nextCanvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const gameOverElement = document.getElementById('game-over');
+
+        const COLS = 10;
+        const ROWS = 20;
+        const BLOCK_SIZE = canvas.width / COLS; // 20
+        const NEXT_BLOCK_SIZE = nextCanvas.width / 4; // 20
+
+        // Adjust font size based on block size for emojis
+        context.font = `${BLOCK_SIZE * 0.8}px Arial`;
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        nextContext.font = `${NEXT_BLOCK_SIZE * 0.8}px Arial`;
+        nextContext.textAlign = 'center';
+        nextContext.textBaseline = 'middle';
+
+
+        const EMOJIS = {
+            'I': '🚀', // Rocket
+            'O': '🪐', // Ringed Planet
+            'T': '💩', // Pile of Poo
+            'S': '👽', // Alien
+            'Z': '⚡️', // High Voltage
+            'J': '🦄', // Unicorn
+            'L': '🍕'  // Pizza
+        };
+
+        const SHAPES = {
+            'I': [[1, 1, 1, 1]],
+            'O': [[1, 1], [1, 1]],
+            'T': [[0, 1, 0], [1, 1, 1]],
+            'S': [[0, 1, 1], [1, 1, 0]],
+            'Z': [[1, 1, 0], [0, 1, 1]],
+            'J': [[1, 0, 0], [1, 1, 1]],
+            'L': [[0, 0, 1], [1, 1, 1]]
+        };
+
+        const PIECE_TYPES = Object.keys(SHAPES);
+
+        let board = createBoard();
+        let currentPiece;
+        let nextPiece;
+        let score = 0;
+        let gameOver = false;
+        let dropStart = Date.now();
+        let dropInterval = 1000; // ms
+
+        function createBoard() {
+            return Array.from({ length: ROWS }, () => Array(COLS).fill(null)); // Use null for empty, emoji for filled
+        }
+
+        function getRandomPiece() {
+            const type = PIECE_TYPES[Math.floor(Math.random() * PIECE_TYPES.length)];
+            const shape = SHAPES[type];
+            const emoji = EMOJIS[type];
+            return {
+                x: Math.floor(COLS / 2) - Math.ceil(shape[0].length / 2),
+                y: 0,
+                shape: shape,
+                emoji: emoji,
+                type: type
+            };
+        }
+
+        function drawBlock(ctx, x, y, emoji, size) {
+            if (emoji) {
+                // Calculate center position for the emoji within the block
+                const centerX = x * size + size / 2;
+                const centerY = y * size + size / 2;
+                ctx.fillText(emoji, centerX, centerY);
+            } else {
+                 // Optionally draw empty blocks or clear them
+                ctx.clearRect(x * size, y * size, size, size);
+                // Or draw a subtle background grid
+                ctx.fillStyle = '#e0ffff'; // LightCyan - same as canvas bg
+                ctx.fillRect(x * size, y * size, size, size);
+                ctx.strokeStyle = '#d0e0e0'; // Slightly darker for grid lines
+                ctx.strokeRect(x * size, y * size, size, size);
+            }
+        }
+
+        function drawBoard() {
+            // Clear canvas and redraw grid background
+            context.fillStyle = '#e0ffff'; // LightCyan
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            context.strokeStyle = '#d0e0e0'; // Grid lines
+            context.lineWidth = 0.5;
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                     context.strokeRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                }
+            }
+
+            // Draw settled pieces
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (board[r][c]) {
+                        drawBlock(context, c, r, board[r][c], BLOCK_SIZE);
+                    }
+                }
+            }
+        }
+
+        function drawPiece(piece, ctx, blockSize, offsetX = 0, offsetY = 0) {
+            piece.shape.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value) {
+                        drawBlock(ctx, piece.x + x + offsetX, piece.y + y + offsetY, piece.emoji, blockSize);
+                    }
+                });
+            });
+        }
+
+         function drawNextPiece() {
+            // Clear the next piece canvas
+            nextContext.fillStyle = '#fff0f5'; // LavenderBlush background
+            nextContext.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
+
+            if (nextPiece) {
+                // Center the piece in the small canvas
+                const shape = nextPiece.shape;
+                const shapeWidth = shape[0].length;
+                const shapeHeight = shape.length;
+                const offsetX = Math.floor((4 - shapeWidth) / 2); // 4 is the effective grid width of the canvas
+                const offsetY = Math.floor((4 - shapeHeight) / 2); // 4 is the effective grid height
+
+                 // Use a temporary piece object for drawing to avoid modifying nextPiece's coords
+                const tempPiece = {
+                    ...nextPiece,
+                    x: 0, // x/y are relative to the small canvas grid
+                    y: 0
+                };
+                drawPiece(tempPiece, nextContext, NEXT_BLOCK_SIZE, offsetX, offsetY);
+            }
+        }
+
+        function isValidMove(piece, newX, newY, newShape) {
+            const shape = newShape || piece.shape;
+            for (let y = 0; y < shape.length; y++) {
+                for (let x = 0; x < shape[y].length; x++) {
+                    if (shape[y][x]) {
+                        let checkX = newX + x;
+                        let checkY = newY + y;
+
+                        // Check wall collisions
+                        if (checkX < 0 || checkX >= COLS || checkY >= ROWS) {
+                            return false;
+                        }
+                        // Check floor collision (only if moving down) - this check is simplified below
+                        // if (checkY >= ROWS) return false; // Handled by >= ROWS check above
+
+                        // Check collision with settled blocks (ignore checkY < 0 for initial spawn)
+                        if (checkY >= 0 && board[checkY][checkX]) {
+                            return false;
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+
+        function movePiece(dx, dy) {
+            if (gameOver) return;
+            const newX = currentPiece.x + dx;
+            const newY = currentPiece.y + dy;
+            if (isValidMove(currentPiece, newX, newY, currentPiece.shape)) {
+                currentPiece.x = newX;
+                currentPiece.y = newY;
+                return true; // Move was successful
+            }
+            return false; // Move failed
+        }
+
+        function rotatePiece() {
+            if (gameOver) return;
+            // Simple rotation (clockwise)
+            const shape = currentPiece.shape;
+            const N = shape.length;
+            const M = shape[0].length;
+            const newShape = Array.from({ length: M }, () => Array(N).fill(0));
+
+            for (let y = 0; y < N; y++) {
+                for (let x = 0; x < M; x++) {
+                    if (shape[y][x]) {
+                        newShape[x][N - 1 - y] = 1;
+                    }
+                }
+            }
+
+            // Check for wall kicks (basic implementation)
+            let kickX = 0;
+            if (!isValidMove(currentPiece, currentPiece.x, currentPiece.y, newShape)) {
+                // Try kicking left or right
+                if (isValidMove(currentPiece, currentPiece.x + 1, currentPiece.y, newShape)) {
+                    kickX = 1;
+                } else if (isValidMove(currentPiece, currentPiece.x - 1, currentPiece.y, newShape)) {
+                    kickX = -1;
+                } else if (isValidMove(currentPiece, currentPiece.x + 2, currentPiece.y, newShape)) {
+                     kickX = 2; // For I piece potentially
+                } else if (isValidMove(currentPiece, currentPiece.x - 2, currentPiece.y, newShape)) {
+                     kickX = -2; // For I piece potentially
+                } else {
+                    return; // Rotation failed even with basic kicks
+                }
+            }
+
+            currentPiece.shape = newShape;
+            currentPiece.x += kickX; // Apply kick if necessary
+        }
+
+        function lockPiece() {
+            currentPiece.shape.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value) {
+                        const boardX = currentPiece.x + x;
+                        const boardY = currentPiece.y + y;
+                        // Prevent overwriting if piece somehow locks partially out of bounds (shouldn't happen with valid moves)
+                        if (boardY >= 0 && boardY < ROWS && boardX >= 0 && boardX < COLS) {
+                             board[boardY][boardX] = currentPiece.emoji;
+                        }
+                    }
+                });
+            });
+        }
+
+        function clearLines() {
+            let linesCleared = 0;
+            for (let r = ROWS - 1; r >= 0; r--) {
+                if (board[r].every(cell => cell !== null)) {
+                    // Line is full
+                    linesCleared++;
+                    // Remove the line and add a new empty line at the top
+                    board.splice(r, 1);
+                    board.unshift(Array(COLS).fill(null));
+                    // Re-check the same row index as rows above shifted down
+                    r++;
+                }
+            }
+            // Update score
+            if (linesCleared > 0) {
+                 // Simple scoring: 10 points per line, bonus for multiple lines
+                score += linesCleared * 10 * linesCleared; // e.g., 10, 40, 90, 160
+                scoreElement.textContent = score;
+
+                 // Increase speed slightly
+                 if (dropInterval > 200) { // Set a max speed
+                     dropInterval -= linesCleared * 10;
+                 }
+            }
+        }
+
+        function checkGameOver() {
+            // If the new piece overlaps with existing blocks immediately, it's game over
+             if (!isValidMove(nextPiece, nextPiece.x, nextPiece.y, nextPiece.shape)) {
+                gameOver = true;
+                gameOverElement.style.display = 'block';
+                console.log("Game Over!");
+            }
+        }
+
+        function resetGame() {
+             board = createBoard();
+             score = 0;
+             scoreElement.textContent = score;
+             gameOver = false;
+             dropInterval = 1000;
+             gameOverElement.style.display = 'none';
+             nextPiece = getRandomPiece(); // Get the first 'next' piece
+             currentPiece = getRandomPiece(); // Get the first playing piece
+             drawNextPiece();
+             gameLoop(); // Start the loop again
+        }
+
+
+        function gameLoop() {
+            if (gameOver) {
+                return; // Stop the loop if game over
+            }
+
+            const now = Date.now();
+            const delta = now - dropStart;
+
+            if (delta > dropInterval) {
+                if (!movePiece(0, 1)) {
+                    // Piece couldn't move down, lock it
+                    lockPiece();
+                    clearLines();
+                    currentPiece = nextPiece; // The 'next' piece becomes current
+                    nextPiece = getRandomPiece(); // Get a new 'next' piece
+                    drawNextPiece(); // Update the 'next' display
+                    checkGameOver(); // Check if the new piece causes game over
+                     if(gameOver) {
+                         drawBoard(); // Draw the final board state
+                         return;
+                     }
+                }
+                dropStart = Date.now();
+            }
+
+            // Drawing
+            drawBoard();
+            drawPiece(currentPiece, context, BLOCK_SIZE);
+
+            requestAnimationFrame(gameLoop); // Keep the loop going
+        }
+
+        // Keyboard Controls
+        document.addEventListener('keydown', (event) => {
+            if (gameOver) return;
+
+            switch (event.key) {
+                case 'ArrowLeft':
+                    movePiece(-1, 0);
+                    break;
+                case 'ArrowRight':
+                    movePiece(1, 0);
+                    break;
+                case 'ArrowDown':
+                    // Move down faster
+                    if (!movePiece(0, 1)) {
+                         // If moving down fails, it means we hit something, so lock immediately
+                        lockPiece();
+                        clearLines();
+                        currentPiece = nextPiece;
+                        nextPiece = getRandomPiece();
+                        drawNextPiece();
+                         checkGameOver();
+                         if (gameOver) return; // Exit if game over after lock
+                    }
+                    dropStart = Date.now(); // Reset drop timer after manual move down
+                    break;
+                case 'ArrowUp':
+                    rotatePiece();
+                    break;
+            }
+             // Redraw immediately after a key press for responsiveness
+             if (!gameOver) {
+                drawBoard();
+                drawPiece(currentPiece, context, BLOCK_SIZE);
+             }
+        });
+
+        // Initial setup
+        resetGame(); // Start the game
+
+    </script>
+</body>
+</html>
